@@ -1,0 +1,68 @@
+use std::io;
+
+use crossterm::event::{
+    KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+};
+use crossterm::execute;
+use crossterm::terminal::{
+    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+};
+use ratatui::Terminal;
+use ratatui::backend::CrosstermBackend;
+
+mod app;
+mod audio;
+mod fx;
+mod game_loop;
+mod input;
+mod physics;
+mod render;
+mod ui;
+mod world;
+
+fn main() -> io::Result<()> {
+    install_panic_hook();
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen)?;
+
+    let keyboard_enhanced = execute!(
+        stdout,
+        PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::REPORT_EVENT_TYPES)
+    )
+    .is_ok();
+
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+    terminal.clear()?;
+
+    let mut app = app::App::new();
+
+    let result = game_loop::run(&mut terminal, &mut app);
+
+    disable_raw_mode()?;
+    if keyboard_enhanced {
+        let _ = execute!(terminal.backend_mut(), PopKeyboardEnhancementFlags);
+    }
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    terminal.show_cursor()?;
+
+    result
+}
+
+/// Restore the terminal on panic so the user isn't left in alt-screen + raw
+/// mode if anything blows up mid-frame (kitty font-size events, rodio glitches,
+/// out-of-bounds in a renderer, etc.). Without this hook, a panic kills our
+/// cleanup path and the terminal looks frozen.
+fn install_panic_hook() {
+    let original = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = disable_raw_mode();
+        let _ = execute!(
+            io::stdout(),
+            PopKeyboardEnhancementFlags,
+            LeaveAlternateScreen,
+        );
+        original(info);
+    }));
+}
