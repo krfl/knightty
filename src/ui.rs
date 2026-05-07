@@ -147,7 +147,14 @@ pub fn draw_background(fb: &mut Framebuffer) {
     fb.clear(HUD_BG);
 }
 
-pub fn draw_arena(fb: &mut Framebuffer, view: &ArenaView) {
+/// Height in framebuffer pixels of the HUD bar drawn by `draw_hud` at a given
+/// scale. Other drawing code uses this to keep below the bar.
+pub fn hud_bar_height(scale: UiScale) -> i32 {
+    let pad_y = (scale.cell_scale as i32).max(1);
+    scale.line_height() + pad_y * 2
+}
+
+pub fn draw_arena(fb: &mut Framebuffer, view: &ArenaView, hud_scale: UiScale) {
     let s = view.tier.size();
     let iso = iso::fit_arena(s, fb.width as i32, fb.height as i32, HUD_HEIGHT);
     let cx = s * 0.5;
@@ -178,10 +185,13 @@ pub fn draw_arena(fb: &mut Framebuffer, view: &ArenaView) {
         prev = Some(pt);
     }
 
-    // Tilt indicator anchored to the framebuffer corner.
+    // Tilt indicator anchored below the HUD bar, with a small gap so the
+    // outer ring is fully visible at every font scale.
+    let ind_radius = 5.0_f32;
+    let bar_bottom = hud_bar_height(hud_scale) + 2;
     let ind_cx = 9.0;
-    let ind_cy = HUD_HEIGHT as f32 + 9.0;
-    draw::filled_circle(fb, ind_cx, ind_cy, 5.0, ARENA_BORDER);
+    let ind_cy = bar_bottom as f32 + ind_radius + 1.0;
+    draw::filled_circle(fb, ind_cx, ind_cy, ind_radius, ARENA_BORDER);
     draw::filled_circle(
         fb,
         ind_cx + view.tilt.0 * 4.0,
@@ -632,9 +642,8 @@ fn draw_menu_knight(fb: &mut Framebuffer, cx: i32, cy: i32, scale: i32) {
 
 pub fn draw_hud(fb: &mut Framebuffer, view: &HudView, scale: UiScale) {
     let fw = fb.width as i32;
-    let h = scale.line_height();
     let pad_y = (scale.cell_scale as i32).max(1);
-    let bar_h = h + pad_y * 2;
+    let bar_h = hud_bar_height(scale);
     draw::fill_rect(fb, 0, 0, fw, bar_h, HUD_BG);
     draw::fill_rect(fb, 0, bar_h, fw, 1, ARENA_BORDER);
 

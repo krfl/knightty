@@ -33,6 +33,7 @@ pub fn run(
     // Tracks airborne state across frames so we can detect the
     // airborne→grounded transition and play the land sound exactly once.
     let mut knight_was_airborne = false;
+    let mut last_size = ratatui::layout::Size { width: 80, height: 24 };
 
     let _input_handle = spawn_input_thread(app.input.shared.clone());
 
@@ -61,7 +62,16 @@ pub fn run(
             break;
         }
 
-        let size = terminal.size()?;
+        // Mid-frame font/window resizes on macOS can briefly return ENXIO
+        // ("Device not configured") from TIOCGWINSZ. Treat any transient I/O
+        // failure as "use last known size" rather than crashing the game.
+        let size = match terminal.size() {
+            Ok(s) => {
+                last_size = s;
+                s
+            }
+            Err(_) => last_size,
+        };
         resize_framebuffer(app, size.width, size.height);
 
         // When the terminal is too small to render the arena, pause the
@@ -149,7 +159,7 @@ pub fn run(
                         banner: banner_owned.as_deref(),
                     };
                     ui::draw_background(&mut app.framebuffer);
-                    ui::draw_arena(&mut app.framebuffer, &arena_view);
+                    ui::draw_arena(&mut app.framebuffer, &arena_view, hud_scale);
                     let hud = HudView {
                         score: app.score,
                         best: app.best,
@@ -172,7 +182,10 @@ pub fn run(
             }
         }
 
-        present(terminal, app)?;
+        // Same rationale as the size query: a mid-frame resize can fail the
+        // draw call transiently. Drop the frame and retry next loop instead
+        // of exiting the game.
+        let _ = present(terminal, app);
 
         let elapsed = last_time.elapsed();
         if elapsed < frame_duration {
@@ -348,6 +361,11 @@ fn update_playing(app: &mut App, frame_time: f32, accumulator: &mut f32) {
 }
 
 fn physics_tick(app: &mut App, dt: f32) {
+    // Once a round ends mid-frame, the accumulator can fire another tick on the
+    // same overlapping knights — re-triggering death/impact sounds. Bail.
+    if !matches!(app.state, AppState::Playing) {
+        return;
+    }
     let arena_size = app.tier.size();
 
     // Rotate the player's input tilt by 45° so screen-up actually moves the
