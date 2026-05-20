@@ -1,9 +1,9 @@
-/// 2D combatant — knight or opponent. Position/velocity in arena world units (pixels).
+/// 2D combatant, either knight or opponent. Position and velocity are in arena world units (pixels).
 #[derive(Clone, Copy)]
 pub struct Combatant {
     pub pos: (f32, f32),
     pub vel: (f32, f32),
-    /// Unit vector — direction the lance is pointing. Updated from velocity when moving fast enough.
+    /// Unit vector for the direction the lance is pointing. Updated from velocity when moving fast enough.
     pub facing: (f32, f32),
     pub radius: f32,
     pub lance_len: f32,

@@ -4,7 +4,7 @@ A jousting game that runs in your terminal.
 
 ![screenshot](screenshot.png)
 
-Two mounted knights, one narrow lane, one lance each. Aim your lance, time your jump, unhorse your opponent. Rendered entirely with halfblock pixels and a bitmap font — no graphics window, just your terminal.
+Two mounted knights, one narrow lane, one lance each. Aim your lance, time your jump, unhorse your opponent. Rendered entirely with halfblock pixels and a bitmap font. No graphics window, just your terminal.
 
 ## Run
 

@@ -12,7 +12,7 @@ impl Color {
 
     pub const BLACK: Self = Self::new(0, 0, 0);
 
-    /// Multiply RGB channels by a factor in `[0, 1]` — fades a color toward black.
+    /// Multiply RGB channels by a factor in `[0, 1]` to fade a color toward black.
     pub fn scale(self, factor: f32) -> Self {
         let f = factor.clamp(0.0, 1.0);
         Self {

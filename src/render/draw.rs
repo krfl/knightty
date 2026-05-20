@@ -53,7 +53,7 @@ pub fn thick_line(fb: &mut Framebuffer, x0: f32, y0: f32, x1: f32, y1: f32, w: f
     }
 }
 
-/// Tapered line — radius shrinks from `w0` to `w1` along the path.
+/// Tapered line whose radius shrinks from `w0` to `w1` along the path.
 pub fn tapered_line(
     fb: &mut Framebuffer,
     x0: f32,
@@ -251,7 +251,7 @@ pub fn glyph_3x5(ch: char) -> Option<&'static [u8; 5]> {
         // `U` narrows on the last row; `V` narrows on the last two; `Y` narrows higher.
         'U' => &[0b101, 0b101, 0b101, 0b101, 0b010],
         'V' => &[0b101, 0b101, 0b101, 0b010, 0b010],
-        // `W` is M's mirror — wide bottom, single peak.
+        // `W` is M's mirror, with a wide bottom and a single peak.
         'W' => &[0b101, 0b101, 0b111, 0b111, 0b010],
         'X' => &[0b101, 0b010, 0b010, 0b010, 0b101],
         'Y' => &[0b101, 0b101, 0b010, 0b010, 0b010],

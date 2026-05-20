@@ -60,7 +60,7 @@ pub struct SoundManager {
 }
 
 impl SoundManager {
-    /// Best-effort init — returns `None` if no audio device is available.
+    /// Best-effort init. Returns `None` if no audio device is available.
     pub fn new() -> Option<Self> {
         let (stream, handle) = OutputStream::try_default().ok()?;
         let music = Sink::try_new(&handle).ok()?;
@@ -115,7 +115,7 @@ impl SoundManager {
         })
     }
 
-    /// Detached one-shot — fire-and-forget.
+    /// Fire-and-forget detached one-shot.
     fn play_oneshot(&self, bytes: Arc<[u8]>, volume: f32) {
         let Ok(sink) = Sink::try_new(&self.handle) else {
             return;
@@ -170,8 +170,8 @@ impl SoundManager {
     }
 
     /// Restart the music track for a victory celebration. If a dedicated
-    /// `assets/sfx/fanfare.ogg` exists at runtime, that's used instead — drop
-    /// a fanfare file there to swap it in without recompiling.
+    /// `assets/sfx/fanfare.ogg` exists at runtime, that's used instead, so you
+    /// can drop a fanfare file there to swap it in without recompiling.
     pub fn play_fanfare(&mut self) {
         if self.muted {
             return;
@@ -197,14 +197,14 @@ impl SoundManager {
 
     /// Play an impact sound for a collision event. Mitigations against ear
     /// fatigue, in order of importance:
-    ///   1. Edge-triggered upstream — physics only emits an impact above a
+    ///   1. Edge-triggered upstream: physics only emits an impact above a
     ///      velocity threshold, so sliding contact stays silent.
-    ///   2. Concurrent cap — silently drops new sounds if too many are active.
-    ///   3. Global cooldown — back-to-back impacts within `IMPACT_COOLDOWN`
+    ///   2. Concurrent cap: silently drops new sounds if too many are active.
+    ///   3. Global cooldown: back-to-back impacts within `IMPACT_COOLDOWN`
     ///      collapse to a single sound.
-    ///   4. Random pitch ±15% — identical hits never sound identical.
-    ///   5. Random volume jitter ±18% — adds organic variation.
-    ///   6. Velocity-scaled volume — soft brushes are subtle, hard hits ring.
+    ///   4. Random pitch ±15%, so identical hits never sound identical.
+    ///   5. Random volume jitter ±18% adds organic variation.
+    ///   6. Velocity-scaled volume, so soft brushes are subtle and hard hits ring.
     pub fn play_impact(&mut self, kind: ImpactKind, speed: f32) {
         if self.muted {
             return;
@@ -222,7 +222,7 @@ impl SoundManager {
         }
 
         // pitch_base bumps the random-jitter range for cases where we're
-        // reusing an existing sample for a different surface — currently the
+        // reusing an existing sample for a different surface. Currently the
         // bumper-via-thud fallback rings ~30% brighter than the wall thud.
         let (bytes, pitch_base): (Arc<[u8]>, f32) = match kind {
             ImpactKind::Body => (self.clash_bytes.clone(), 1.0),
@@ -265,7 +265,7 @@ impl SoundManager {
         self.last_impact_t = now;
     }
 
-    /// One-shot neigh — used to announce a new opponent's arrival at round start.
+    /// One-shot neigh that announces a new opponent's arrival at round start.
     pub fn play_neigh(&self) {
         if self.muted {
             return;

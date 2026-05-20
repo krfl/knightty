@@ -14,12 +14,12 @@ pub struct Impact {
     pub speed: f32,
 }
 
-/// Closing velocity below this is treated as a sliding contact, not an impact —
+/// Closing velocity below this is treated as a sliding contact, not an impact:
 /// no sound, no event. Prevents fatigue from a knight pressing against a wall.
 pub const IMPACT_AUDIO_THRESHOLD: f32 = 8.0;
 
 pub const TILT_GAIN: f32 = 90.0;       // pixels/s^2 at full tilt
-pub const DRAG: f32 = 0.05;            // quadratic drag — lower = more momentum carry
+pub const DRAG: f32 = 0.05;            // quadratic drag; lower means more momentum carry
 pub const RESTITUTION: f32 = 0.65;     // wall bounce
 pub const MIN_FACING_SPEED: f32 = 4.0; // below this, lance keeps last direction
 pub const MIN_HIT_SPEED: f32 = 12.0;   // below this, lance contact doesn't count as a kill
@@ -47,7 +47,7 @@ pub fn step(
         tilt
     };
 
-    // Quadratic drag — always opposes velocity (sign of v * |v| matches v).
+    // Quadratic drag always opposes velocity (sign of v * |v| matches v).
     // Reduced while airborne so a jump preserves momentum.
     let drag_k = if c.airborne() { DRAG * AIR_DRAG_SCALE } else { DRAG };
     let ax = TILT_GAIN * tx - drag_k * c.vel.0 * c.vel.0.abs();
@@ -69,7 +69,7 @@ pub fn step(
         }
     }
 
-    // Round arena wall — bumpy boundary `r(θ) = R + amp * sin(N*θ)`. The
+    // Round arena wall with a bumpy boundary `r(θ) = R + amp * sin(N*θ)`. The
     // bump gradient is folded into the collision normal so glancing hits
     // deflect at angles the player can read.
     let cx = arena_size * 0.5;
@@ -112,7 +112,7 @@ pub fn step(
 }
 
 /// Resolve body-vs-body collision (impulse + positional separation).
-/// Skipped when either combatant is airborne — they pass over each other.
+/// Skipped when either combatant is airborne, since they pass over each other.
 pub fn resolve_body_collision(a: &mut Combatant, b: &mut Combatant, impacts: &mut Vec<Impact>) {
     if a.airborne() || b.airborne() {
         return;
@@ -173,7 +173,7 @@ fn segment_point_dist2(s0: (f32, f32), s1: (f32, f32), p: (f32, f32)) -> f32 {
 }
 
 /// True if `attacker`'s lance segment intersects `defender`'s body circle.
-/// Either being airborne disables the hit — lances are horizontal in the
+/// Either being airborne disables the hit. Lances are horizontal in the
 /// ground plane, so a jumping defender goes over and a jumping attacker's
 /// lance points high.
 pub fn lance_hits(attacker: &Combatant, defender: &Combatant) -> bool {

@@ -10,7 +10,7 @@ pub struct SharedInput {
     pub keys_last_press: HashMap<KeyCode, Instant>,
     pub has_release_support: bool,
     pub pressed_keys: Vec<KeyCode>,
-    /// Set when the user presses Ctrl+C — main loop polls this to exit
+    /// Set when the user presses Ctrl+C. The main loop polls this to exit
     /// (raw mode swallows SIGINT, so we route it through here).
     pub exit_requested: bool,
 }
@@ -79,7 +79,7 @@ impl InputState {
         }
     }
 
-    /// Update tilt vector — ramps toward held direction, springs back to 0
+    /// Update tilt vector. Ramps toward held direction, springs back to 0
     /// when released. Knight momentum lives in the velocity drag, not in
     /// the tilt itself, so releasing keys does not freeze the board.
     pub fn update_tilt(&mut self, dt: f32) {

@@ -44,7 +44,7 @@ pub fn run(
             .as_secs_f32()
             .min(MAX_FRAME_TIME);
         last_time = now;
-        // Only advance the physics accumulator while in Playing — otherwise
+        // Only advance the physics accumulator while in Playing. Otherwise
         // time spent in menus/game-over/victory would queue up phantom ticks
         // that all fire when the next round starts (opponent charges and
         // kills the knight before the player has even taken a frame to react).
@@ -55,8 +55,8 @@ pub fn run(
         }
 
         app.input.sync_from_shared();
-        // Ctrl+C is the universal exit — we route it through SharedInput
-        // since raw mode swallows SIGINT.
+        // Ctrl+C is the universal exit. We route it through SharedInput since
+        // raw mode swallows SIGINT.
         if app.input.shared.lock().unwrap().exit_requested {
             app.running = false;
             break;
@@ -75,8 +75,8 @@ pub fn run(
         resize_framebuffer(app, size.width, size.height);
 
         // When the terminal is too small to render the arena, pause the
-        // simulation entirely — physics shouldn't keep running while the
-        // player can't see what's happening.
+        // simulation entirely. Physics shouldn't keep running while the player
+        // can't see what's happening.
         let paused_for_size = matches!(app.tier, ArenaTier::BelowMin)
             && matches!(app.state, AppState::Playing);
         if paused_for_size {
@@ -101,8 +101,8 @@ pub fn run(
             break;
         }
 
-        // Audio ticks in every state — music continues across menu/game-over;
-        // gallop fades naturally because it scales with knight speed (and we
+        // Audio ticks in every state so music continues across menu/game-over.
+        // Gallop fades naturally because it scales with knight speed (and we
         // force speed=0 while airborne so hoofbeats stop mid-jump).
         let in_play = matches!(app.state, AppState::Playing);
         let knight_airborne = in_play && app.knight.airborne();
@@ -122,10 +122,10 @@ pub fn run(
             s.update(frame_time, speed);
         }
 
-        // Render everything into the framebuffer — single coordinate system,
-        // single visual style. UI scale picked from current terminal cells
-        // *and* the actual cell pixel size, so absolute readability stays
-        // consistent across font sizes.
+        // Render everything into the framebuffer for a single coordinate
+        // system and a single visual style. UI scale picked from current
+        // terminal cells *and* the actual cell pixel size, so absolute
+        // readability stays consistent across font sizes.
         let (_cell_w, cell_h) = detect_cell_pixel_size();
         let ui_scale = ui::pick_ui_scale(size.width, size.height, cell_h);
         // HUD scale capped one tier below menu/overlays so it doesn't
@@ -197,7 +197,7 @@ pub fn run(
 }
 
 fn resize_framebuffer(app: &mut App, term_cols: u16, term_rows: u16) {
-    // Framebuffer covers the entire terminal — HUD and overlays draw into it
+    // Framebuffer covers the entire terminal. HUD and overlays draw into it
     // alongside the arena, so there's no separate ratatui-text row to reserve.
     let fb_w = (term_cols as u32).max(1) * PX_PER_COL;
     let fb_h = (term_rows as u32).max(1) * PX_PER_ROW;
@@ -222,7 +222,7 @@ fn present(
 }
 
 fn handle_menu_input(app: &mut App) {
-    // ESC and 'q' deliberately don't quit from the menu — the only ways out
+    // ESC and 'q' deliberately don't quit from the menu; the only ways out
     // are the QUIT menu option or Ctrl+C. Keeps a stray ESC after a joust
     // round from accidentally exiting the whole program.
     for key in app.input.pressed.clone() {
@@ -299,7 +299,7 @@ fn spawn_round(app: &mut App, knight_too: bool) {
     let count = hazard::hazard_count(app.level(), app.difficulty);
     app.hazards = hazard::spawn_hazards(s, count, app.knight.pos, app.opponent.pos);
 
-    // Mark the spawn time so the AI's tilt ramps up gradually — gives the
+    // Mark the spawn time so the AI's tilt ramps up gradually, giving the
     // player a beat to read the new opponent before they're being charged.
     app.opponent_spawn_at = app.round_time;
 
@@ -361,8 +361,8 @@ fn update_playing(app: &mut App, frame_time: f32, accumulator: &mut f32) {
 }
 
 fn physics_tick(app: &mut App, dt: f32) {
-    // Once a round ends mid-frame, the accumulator can fire another tick on the
-    // same overlapping knights — re-triggering death/impact sounds. Bail.
+    // Once a round ends mid-frame, the accumulator can fire another tick on
+    // the same overlapping knights, re-triggering death/impact sounds. Bail.
     if !matches!(app.state, AppState::Playing) {
         return;
     }

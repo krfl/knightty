@@ -49,8 +49,8 @@ const TARGET_TITLE_PX: u32 = 64;
 
 pub fn pick_ui_scale(term_cols: u16, term_rows: u16, cell_h_px: u16) -> UiScale {
     // Below the small-terminal threshold, drop to 3×5 so menu/HUD still fits.
-    // No plain-text fallback — too tiny for any bitmap font shows the
-    // BelowMin splash instead.
+    // There's no plain-text fallback; anything too tiny for the bitmap font
+    // shows the BelowMin splash instead.
     if term_cols < 80 || term_rows < 28 {
         return UiScale { glyph_w: 3, cell_scale: 1 };
     }
@@ -74,7 +74,7 @@ pub fn pick_ui_scale(term_cols: u16, term_rows: u16, cell_h_px: u16) -> UiScale 
     }
 }
 
-/// Reserved cell rows at the top of the terminal for the HUD bar — kept as 0
+/// Reserved cell rows at the top of the terminal for the HUD bar. Kept at 0
 /// since the HUD is drawn into the framebuffer (no separate ratatui row).
 pub const HUD_HEIGHT: i32 = 0;
 
@@ -161,7 +161,7 @@ pub fn draw_arena(fb: &mut Framebuffer, view: &ArenaView, hud_scale: UiScale) {
     let cy = s * 0.5;
     let arena_r = s * 0.5;
 
-    // Round floor — wood texture in world coords.
+    // Round floor with wood texture in world coords.
     draw::fill_iso_circle(fb, &iso, (cx, cy), arena_r, |wx, wy| {
         let t = (wy / s * 7.0).sin() * 0.5 + 0.5;
         let row = WOOD_DARK.lerp(WOOD_LIGHT, t * 0.4 + 0.3);
@@ -169,7 +169,7 @@ pub fn draw_arena(fb: &mut Framebuffer, view: &ArenaView, hud_scale: UiScale) {
         if n > 0.72 { WOOD_GRAIN } else { row }
     });
 
-    // Bumpy boundary — polar curve `r(θ) = R + amp * sin(N*θ)`.
+    // Bumpy boundary traced by the polar curve `r(θ) = R + amp * sin(N*θ)`.
     let segments = 144usize;
     let mut prev: Option<(f32, f32)> = None;
     for i in 0..=segments {
@@ -214,7 +214,7 @@ pub fn draw_arena(fb: &mut Framebuffer, view: &ArenaView, hud_scale: UiScale) {
         }
     }
 
-    // Combatants — depth-sorted.
+    // Depth-sorted combatants.
     let kd = view.knight.pos.0 + view.knight.pos.1;
     let od = view.opponent.pos.0 + view.opponent.pos.1;
     if kd <= od {
@@ -225,7 +225,7 @@ pub fn draw_arena(fb: &mut Framebuffer, view: &ArenaView, hud_scale: UiScale) {
         draw_combatant(fb, view.knight, &iso, &PLAYER_PALETTE);
     }
 
-    // Front-half banners — drawn after combatants.
+    // Front-half banners, drawn after combatants.
     draw_banners(fb, &iso, (cx, cy), arena_r, true);
 
     // Particles (fireworks). Rendered last so sky bursts always show on top.
@@ -499,7 +499,7 @@ pub fn draw_menu(
     let sub_h = sub_scale.line_height();
 
     // Knight backdrop scales with the menu scale, capped so it doesn't
-    // overflow narrow terminals — design is roughly 40 fb pixels wide at
+    // overflow narrow terminals. The design is roughly 40 fb pixels wide at
     // scale 1 (37 wide × 28 tall before margin).
     let knight_scale_w_cap = ((fw - 4) / 50).max(1);
     let knight_scale = (scale.cell_scale as i32).min(2).min(knight_scale_w_cap).max(1);
@@ -578,11 +578,11 @@ fn draw_menu_knight(fb: &mut Framebuffer, cx: i32, cy: i32, scale: i32) {
     let (tx, ty) = p(-13, -1);
     draw::filled_circle(fb, tx, ty, 2.0 * sf, horse_dark);
 
-    // Horse body — broad oval at center.
+    // Horse body: a broad oval at center.
     let (bx, by) = p(0, 0);
     draw::fill_axis_ellipse(fb, bx, by, 12.0 * sf, 5.0 * sf, horse);
 
-    // Caparison (saddle blanket) — blue stripe on the body's upper half.
+    // Caparison (saddle blanket): a blue stripe across the body's upper half.
     draw::fill_axis_ellipse(fb, bx, by - 1.0 * sf, 9.0 * sf, 3.0 * sf, stripe_blue);
 
     // Front legs (drawn over the body so the silhouette reads correctly).
@@ -592,7 +592,7 @@ fn draw_menu_knight(fb: &mut Framebuffer, cx: i32, cy: i32, scale: i32) {
         draw::tapered_line(fb, lx, ly_top, lx, ly_bot, 1.6 * sf, 1.4 * sf, horse_dark);
     }
 
-    // Neck — tapered line angled up to the head.
+    // Neck: a tapered line angled up to the head.
     let (n0x, n0y) = p(9, -3);
     let (n1x, n1y) = p(14, -8);
     draw::tapered_line(fb, n0x, n0y, n1x, n1y, 4.0 * sf, 2.5 * sf, horse);
@@ -601,7 +601,7 @@ fn draw_menu_knight(fb: &mut Framebuffer, cx: i32, cy: i32, scale: i32) {
     let (mx, my) = p(11, -5);
     draw::filled_circle(fb, mx, my, 1.8 * sf, horse_dark);
 
-    // Horse head — small ellipse pointing forward.
+    // Horse head: a small ellipse pointing forward.
     let (hx, hy) = p(15, -8);
     draw::fill_axis_ellipse(fb, hx, hy, 4.0 * sf, 2.5 * sf, horse);
 
@@ -628,7 +628,7 @@ fn draw_menu_knight(fb: &mut Framebuffer, cx: i32, cy: i32, scale: i32) {
     let (pl1x, pl1y) = p(-7, -16);
     draw::tapered_line(fb, pl0x, pl0y, pl1x, pl1y, 3.0 * sf, 1.0 * sf, plume);
 
-    // Lance — angled forward and up, with a metal tip.
+    // Lance, angled forward and up, with a metal tip.
     let (l0x, l0y) = p(2, -8);
     let (l1x, l1y) = p(24, -19);
     draw::tapered_line(fb, l0x, l0y, l1x, l1y, 2.5 * sf, 0.9 * sf, lance_wood);
@@ -750,8 +750,8 @@ pub fn draw_victory(fb: &mut Framebuffer, scale: UiScale) {
     // Available width for body lines inside the scroll, minus side margins.
     let max_inner_w = fw - 4 - outer_pad * 2;
 
-    // Auto-fit body scale — pick the largest variant where every body and
-    // prompt line fits inside the scroll panel.
+    // Auto-fit the body scale by picking the largest variant where every body
+    // and prompt line fits inside the scroll panel.
     let body_candidates: &[UiScale] = &[
         scale,
         UiScale {
@@ -799,8 +799,8 @@ pub fn draw_victory(fb: &mut Framebuffer, scale: UiScale) {
     let scroll_x = (fw - scroll_w) / 2;
     let scroll_y = ((fh - scroll_h) / 2).max(8);
 
-    // Scroll backdrop — drawn before the king so the parchment is the
-    // surface the king is "painted" on.
+    // Scroll backdrop, drawn before the king so the parchment is the surface
+    // the king is "painted" on.
     draw::fill_rect(fb, scroll_x - 2, scroll_y - 2, scroll_w + 4, scroll_h + 4, ink);
     draw::fill_rect(fb, scroll_x, scroll_y, scroll_w, scroll_h, parchment);
     draw::fill_rect(fb, scroll_x, scroll_y, scroll_w, 2, parchment_dim);
@@ -826,7 +826,7 @@ pub fn draw_victory(fb: &mut Framebuffer, scale: UiScale) {
 }
 
 /// Procedural pixel-art king portrait, drawn centered at `(cx, cy)`.
-/// `backdrop` is the color of the soft halo behind the head — pass the
+/// `backdrop` is the color of the soft halo behind the head. Pass the
 /// surrounding background tone (e.g. parchment_dim when on a parchment scroll,
 /// near-black when on the dark game background).
 fn draw_king(fb: &mut Framebuffer, cx: i32, cy: i32, backdrop: Color) {
@@ -876,7 +876,7 @@ fn draw_king(fb: &mut Framebuffer, cx: i32, cy: i32, backdrop: Color) {
     // Nose hint.
     fb.set(cx, cy + 1, face_shadow);
 
-    // Beard — wider ellipse below the face.
+    // Beard: a wider ellipse below the face.
     draw::fill_axis_ellipse(fb, cx as f32, (cy + 6) as f32, 9.0, 5.0, beard);
 
     // Mustache curls just under the nose.
@@ -886,7 +886,7 @@ fn draw_king(fb: &mut Framebuffer, cx: i32, cy: i32, backdrop: Color) {
         }
     }
 
-    // Mouth — small dark line.
+    // Mouth: a small dark line.
     for dx in -1..=1 {
         fb.set(cx + dx, cy + 4, eye);
     }

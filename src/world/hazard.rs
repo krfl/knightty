@@ -112,7 +112,7 @@ pub fn spawn_hazards(
             });
             continue 'outer;
         }
-        // Couldn't place — give up on this slot.
+        // Couldn't place this one; give up on the slot.
     }
     out
 }
@@ -140,8 +140,8 @@ pub fn check_pit(c: &Combatant, hazards: &[Hazard]) -> bool {
     false
 }
 
-/// Resolve bumper collisions for one combatant. Bumpers are static — push the
-/// combatant out and reflect velocity with restitution > 1 for a kick.
+/// Resolve bumper collisions for one combatant. Bumpers are static, so we push
+/// the combatant out and reflect velocity with restitution > 1 for a kick.
 /// Airborne combatants pass over bumpers.
 pub fn resolve_bumpers(c: &mut Combatant, hazards: &[Hazard], impacts: &mut Vec<Impact>) {
     if c.airborne() {
