@@ -132,6 +132,30 @@ pub struct HudView {
     pub level: u32,
 }
 
+/// Cached static arena layer: the wood floor and the bumpy border ring. Both
+/// depend only on the tier and framebuffer size, so they are rendered once and
+/// blitted each frame instead of recomputing the per-pixel wood texture and the
+/// 144-segment border every time.
+pub struct ArenaBackground {
+    buf: Framebuffer,
+    key: Option<(ArenaTier, u32, u32)>,
+}
+
+impl ArenaBackground {
+    pub fn new() -> Self {
+        Self {
+            buf: Framebuffer::new(1, 1),
+            key: None,
+        }
+    }
+}
+
+impl Default for ArenaBackground {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 
 #[allow(dead_code)]
 pub fn arena_rect(fb: &Framebuffer) -> (i32, i32, i32) {
@@ -154,15 +178,14 @@ pub fn hud_bar_height(scale: UiScale) -> i32 {
     scale.line_height() + pad_y * 2
 }
 
-pub fn draw_arena(fb: &mut Framebuffer, view: &ArenaView, hud_scale: UiScale) {
-    let s = view.tier.size();
-    let iso = iso::fit_arena(s, fb.width as i32, fb.height as i32, HUD_HEIGHT);
-    let cx = s * 0.5;
-    let cy = s * 0.5;
-    let arena_r = s * 0.5;
+/// Render the static floor + border into `fb` (already cleared to `HUD_BG`).
+/// Frame-invariant for a given iso/tier, so `draw_arena` caches the result.
+fn draw_arena_floor(fb: &mut Framebuffer, iso: &Iso, center: (f32, f32), arena_r: f32) {
+    let (cx, cy) = center;
+    let s = arena_r * 2.0;
 
     // Round floor with wood texture in world coords.
-    draw::fill_iso_circle(fb, &iso, (cx, cy), arena_r, |wx, wy| {
+    draw::fill_iso_circle(fb, iso, (cx, cy), arena_r, |wx, wy| {
         let t = (wy / s * 7.0).sin() * 0.5 + 0.5;
         let row = WOOD_DARK.lerp(WOOD_LIGHT, t * 0.4 + 0.3);
         let n = (((wx * 3.0) as i32 + (wy * 5.0) as i32).rem_euclid(13)) as f32 / 13.0;
@@ -183,6 +206,32 @@ pub fn draw_arena(fb: &mut Framebuffer, view: &ArenaView, hud_scale: UiScale) {
             draw::tapered_line(fb, p.0, p.1, pt.0, pt.1, 2.0, 2.0, ARENA_BORDER);
         }
         prev = Some(pt);
+    }
+}
+
+pub fn draw_arena(
+    fb: &mut Framebuffer,
+    bg: &mut ArenaBackground,
+    view: &ArenaView,
+    hud_scale: UiScale,
+) {
+    let s = view.tier.size();
+    let iso = iso::fit_arena(s, fb.width as i32, fb.height as i32, HUD_HEIGHT);
+    let cx = s * 0.5;
+    let cy = s * 0.5;
+    let arena_r = s * 0.5;
+
+    // Rebuild the static floor+border layer only when the tier or framebuffer
+    // size changes; otherwise reuse the cached pixels.
+    let key = (view.tier, fb.width, fb.height);
+    if bg.key != Some(key) {
+        bg.buf.resize(fb.width, fb.height);
+        bg.buf.clear(HUD_BG);
+        draw_arena_floor(&mut bg.buf, &iso, (cx, cy), arena_r);
+        bg.key = Some(key);
+    }
+    if fb.color.len() == bg.buf.color.len() {
+        fb.color.copy_from_slice(&bg.buf.color);
     }
 
     // Tilt indicator anchored below the HUD bar, with a small gap so the
@@ -896,3 +945,36 @@ fn draw_king(fb: &mut Framebuffer, cx: i32, cy: i32, backdrop: Color) {
     draw::fill_rect(fb, cx - 12, cy + 11, 24, 1, robe_trim);
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn color_tuples(fb: &Framebuffer) -> Vec<(u8, u8, u8)> {
+        fb.color.iter().map(|c| (c.r, c.g, c.b)).collect()
+    }
+
+    /// The cached floor+border layer must be frame-invariant to be safe to
+    /// cache: two renders with the same inputs produce identical pixels, and it
+    /// covers a large area (so caching is worthwhile).
+    #[test]
+    fn arena_floor_is_deterministic_and_nonempty() {
+        let iso = iso::fit_arena(100.0, 160, 96, HUD_HEIGHT);
+        let mut a = Framebuffer::new(160, 96);
+        let mut b = Framebuffer::new(160, 96);
+        a.clear(HUD_BG);
+        b.clear(HUD_BG);
+        draw_arena_floor(&mut a, &iso, (50.0, 50.0), 50.0);
+        draw_arena_floor(&mut b, &iso, (50.0, 50.0), 50.0);
+
+        assert_eq!(
+            color_tuples(&a),
+            color_tuples(&b),
+            "floor render must be deterministic to cache safely"
+        );
+
+        let bg = (HUD_BG.r, HUD_BG.g, HUD_BG.b);
+        let painted = color_tuples(&a).into_iter().filter(|&c| c != bg).count();
+        assert!(painted > 500, "floor should cover a large area, got {painted}");
+    }
+}

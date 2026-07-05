@@ -34,6 +34,8 @@ pub struct App {
 
     pub input: InputState,
     pub framebuffer: Framebuffer,
+    /// Cached static arena floor+border layer, blitted each frame.
+    pub arena_bg: crate::ui::ArenaBackground,
 
     pub tier: ArenaTier,
     pub knight: Combatant,
@@ -67,6 +69,7 @@ impl App {
 
             input: InputState::new(),
             framebuffer: Framebuffer::new(160, 96),
+            arena_bg: crate::ui::ArenaBackground::new(),
 
             tier: ArenaTier::Standard,
             knight: Combatant::new((30.0, 50.0), (1.0, 0.0), 3.5, 9.0),

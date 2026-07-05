@@ -159,7 +159,7 @@ pub fn run(
                         banner: banner_owned.as_deref(),
                     };
                     ui::draw_background(&mut app.framebuffer);
-                    ui::draw_arena(&mut app.framebuffer, &arena_view, hud_scale);
+                    ui::draw_arena(&mut app.framebuffer, &mut app.arena_bg, &arena_view, hud_scale);
                     let hud = HudView {
                         score: app.score,
                         best: app.best,

@@ -37,23 +37,83 @@ pub fn filled_circle(fb: &mut Framebuffer, cx: f32, cy: f32, r: f32, c: Color) {
     }
 }
 
-/// Thick line by stamping a small disc along the path.
-#[allow(dead_code)]
-pub fn thick_line(fb: &mut Framebuffer, x0: f32, y0: f32, x1: f32, y1: f32, w: f32, c: Color) {
+/// Fill a segment thickened into a capsule whose radius tapers linearly from
+/// `w0/2` at the start to `w1/2` at the end. Single bounding-box pass with no
+/// overdraw, replacing the old approach of stamping a full disc at every step
+/// along the path (which was O(len * r^2) and repainted each pixel ~r times).
+///
+/// A pixel center `Q` is covered iff some `t` in `[0, 1]` satisfies
+/// `|Q - P(t)| <= r(t)`, where `P(t) = P0 + t*(P1-P0)` and
+/// `r(t) = r0 + t*(r1-r0)`. Expanding `|Q - P(t)|^2 <= r(t)^2` gives a quadratic
+/// `f(t) = a*t^2 + b*t + c`, and the segment covers `Q` iff `f`'s minimum over
+/// `[0, 1]` is `<= 0`. The old disc union is exactly this set sampled at
+/// discrete `t`, so this is a gap-free, faithful version of it.
+#[allow(clippy::too_many_arguments)]
+fn swept_line(
+    fb: &mut Framebuffer,
+    x0: f32,
+    y0: f32,
+    x1: f32,
+    y1: f32,
+    w0: f32,
+    w1: f32,
+    c: Color,
+) {
+    let r0 = w0 * 0.5;
+    let r1 = w1 * 0.5;
     let dx = x1 - x0;
     let dy = y1 - y0;
-    let len = (dx * dx + dy * dy).sqrt().max(1.0);
-    let steps = len.ceil() as i32;
-    let r = w * 0.5;
-    for s in 0..=steps {
-        let t = s as f32 / steps as f32;
-        let x = x0 + dx * t;
-        let y = y0 + dy * t;
-        filled_circle(fb, x, y, r, c);
+    let dd = dx * dx + dy * dy;
+    let rmax = r0.max(r1);
+
+    // Degenerate (near-zero-length) segment: just a disc of the larger radius.
+    if dd < 1e-6 {
+        filled_circle(fb, x0, y0, rmax, c);
+        return;
+    }
+
+    let dr = r1 - r0;
+    let a = dd - dr * dr;
+
+    let xmin = (x0.min(x1) - rmax).floor() as i32;
+    let xmax = (x0.max(x1) + rmax).ceil() as i32;
+    let ymin = (y0.min(y1) - rmax).floor() as i32;
+    let ymax = (y0.max(y1) + rmax).ceil() as i32;
+
+    for j in ymin..=ymax {
+        for i in xmin..=xmax {
+            let ax = i as f32 + 0.5 - x0;
+            let ay = j as f32 + 0.5 - y0;
+            let ad = ax * dx + ay * dy; // A . D
+            let aa = ax * ax + ay * ay; // |A|^2
+            let b = -2.0 * (ad + r0 * dr);
+            let cc = aa - r0 * r0;
+
+            // Minimum of f(t) = a*t^2 + b*t + cc over [0, 1]: check both
+            // endpoints, plus the parabola vertex when it opens upward and the
+            // vertex falls inside the interval.
+            let mut fmin = cc.min(a + b + cc);
+            if a > 1e-9 {
+                let tv = -b / (2.0 * a);
+                if tv > 0.0 && tv < 1.0 {
+                    fmin = fmin.min(a * tv * tv + b * tv + cc);
+                }
+            }
+
+            if fmin <= 0.0 {
+                fb.set(i, j, c);
+            }
+        }
     }
 }
 
-/// Tapered line whose radius shrinks from `w0` to `w1` along the path.
+/// Thick line of constant width `w`.
+#[allow(dead_code)]
+pub fn thick_line(fb: &mut Framebuffer, x0: f32, y0: f32, x1: f32, y1: f32, w: f32, c: Color) {
+    swept_line(fb, x0, y0, x1, y1, w, w, c);
+}
+
+/// Tapered line whose width shrinks from `w0` to `w1` along the path.
 pub fn tapered_line(
     fb: &mut Framebuffer,
     x0: f32,
@@ -64,17 +124,7 @@ pub fn tapered_line(
     w1: f32,
     c: Color,
 ) {
-    let dx = x1 - x0;
-    let dy = y1 - y0;
-    let len = (dx * dx + dy * dy).sqrt().max(1.0);
-    let steps = len.ceil() as i32;
-    for s in 0..=steps {
-        let t = s as f32 / steps as f32;
-        let x = x0 + dx * t;
-        let y = y0 + dy * t;
-        let r = (w0 * (1.0 - t) + w1 * t) * 0.5;
-        filled_circle(fb, x, y, r, c);
-    }
+    swept_line(fb, x0, y0, x1, y1, w0, w1, c);
 }
 
 /// Axis-aligned filled ellipse.
@@ -369,6 +419,93 @@ pub fn text_bitmap_width(s: &str, glyph_w: u8, cell_scale: u8) -> i32 {
         0
     } else {
         n * (gw + 1) * scale - scale
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    /// The previous implementation: stamp a full disc at every integer step.
+    /// Kept here as the reference the swept fill must reproduce.
+    fn disc_stamp(
+        fb: &mut Framebuffer,
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        w0: f32,
+        w1: f32,
+        c: Color,
+    ) {
+        let dx = x1 - x0;
+        let dy = y1 - y0;
+        let len = (dx * dx + dy * dy).sqrt().max(1.0);
+        let steps = len.ceil() as i32;
+        for s in 0..=steps {
+            let t = s as f32 / steps as f32;
+            let x = x0 + dx * t;
+            let y = y0 + dy * t;
+            let r = (w0 * (1.0 - t) + w1 * t) * 0.5;
+            filled_circle(fb, x, y, r, c);
+        }
+    }
+
+    fn set_pixels(fb: &Framebuffer) -> HashSet<(i32, i32)> {
+        let mut s = HashSet::new();
+        for y in 0..fb.height as i32 {
+            for x in 0..fb.width as i32 {
+                let px = fb.color[(y as u32 * fb.width + x as u32) as usize];
+                if (px.r, px.g, px.b) != (0, 0, 0) {
+                    s.insert((x, y));
+                }
+            }
+        }
+        s
+    }
+
+    #[test]
+    fn swept_line_matches_disc_stamp() {
+        // (x0, y0, x1, y1, w0, w1): assorted angles, lengths, and tapers.
+        let cases = [
+            (10.0, 10.0, 50.0, 30.0, 3.0, 3.0),
+            (10.0, 40.0, 55.0, 40.0, 4.0, 1.0), // horizontal taper
+            (20.0, 55.0, 20.0, 10.0, 2.0, 2.0), // vertical
+            (5.0, 5.0, 60.0, 60.0, 5.0, 1.5),   // diagonal taper
+            (60.0, 12.0, 12.0, 50.0, 1.5, 4.0), // reverse taper
+            (30.0, 30.0, 30.4, 30.4, 4.0, 4.0), // near-degenerate
+        ];
+
+        for (x0, y0, x1, y1, w0, w1) in cases {
+            let c = Color::new(255, 0, 0);
+            let mut a = Framebuffer::new(80, 80);
+            let mut b = Framebuffer::new(80, 80);
+            a.clear(Color::BLACK);
+            b.clear(Color::BLACK);
+            disc_stamp(&mut a, x0, y0, x1, y1, w0, w1, c);
+            swept_line(&mut b, x0, y0, x1, y1, w0, w1, c);
+
+            let old = set_pixels(&a);
+            let new = set_pixels(&b);
+            assert!(!old.is_empty(), "reference drew nothing for {x0},{y0},{x1},{y1}");
+
+            // No gaps: every disc-stamped pixel is covered by the swept fill.
+            let missing = old.difference(&new).count();
+            assert_eq!(
+                missing, 0,
+                "swept fill left {missing} gaps vs disc stamp for {x0},{y0},{x1},{y1}"
+            );
+
+            // No meaningful over-cover: the swept region is a tight superset
+            // (only sub-pixel boundary pixels the discrete stamping missed).
+            let extra = new.difference(&old).count();
+            assert!(
+                extra as f32 <= old.len() as f32 * 0.15 + 4.0,
+                "swept over-covered by {extra} (base {}) for {x0},{y0},{x1},{y1}",
+                old.len()
+            );
+        }
     }
 }
 
