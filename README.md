@@ -4,13 +4,9 @@ A jousting game that runs in your terminal.
 
 ![screenshot](screenshot.png)
 
-Two mounted knights in a round arena, one lance each. Hit your opponent with your lance before they hit you with theirs. Rendered entirely with halfblock pixels and a bitmap font. No graphics window, just your terminal.
+Two knights, a round arena, one lance each. Hit the other knight with your lance before they hit you. Beat ten in a row to win.
 
-## How to play
-
-Your lance points wherever you are moving, and a hit only counts when you have some speed. Unhorse ten opponents in a row to win the tourney. Get unhorsed once and the run is over.
-
-Each round adds more hazards. Riding into a pit ends your run, and an opponent who falls into one counts as a win for you. Bumpers bounce you away harder than you came in. A jump carries you over pits, bumpers and lances, but your own lance can't hit anything while you are in the air.
+Everything is drawn with halfblock characters and a bitmap font.
 
 ## Run
 
@@ -18,31 +14,30 @@ Each round adds more hazards. Riding into a pit ends your run, and an opponent w
 cargo run --release
 ```
 
-You need a recent stable Rust toolchain. Sound is on by default; the assets ship in `assets/sfx/`.
-
-`cargo test` runs the tests, including ones that render frames without a terminal.
+Needs a recent stable Rust.
 
 ## Controls
 
-| Key                     | Action                     |
-|-------------------------|----------------------------|
-| `WASD` / arrows         | Move the knight            |
-| `Space`                 | Jump                       |
-| `R` / `Enter` / `Space` | Restart after losing       |
-| `Esc`                   | Back to menu               |
-| `Ctrl-C`                | Quit                       |
+| Key                     | Action               |
+|-------------------------|----------------------|
+| `WASD` / arrows         | Move                 |
+| `Space`                 | Jump                 |
+| `R` / `Enter` / `Space` | Restart after a loss |
+| `Esc`                   | Back to menu         |
+| `Ctrl-C`                | Quit                 |
 
-In the menu, `W`/`S` or the up and down arrows move the selection and `Enter` or `Space` picks it. Picking the difficulty line cycles through EASY, NORMAL and HARD.
+In the menu, move with `W`/`S` or the arrows and pick with `Enter`.
+
+## Good to know
+
+- Your lance points the way you are moving, and a hit only counts at speed.
+- Pits end your run, and your opponent's.
+- A jump clears pits, bumpers and lances.
+- A smaller font gives a bigger arena and more detail. 80x24 is the minimum.
+- The arena size is set when a run starts. Resizing mid-run only zooms.
+- You need a truecolor terminal.
+- Controls work best with the kitty keyboard protocol (kitty, WezTerm, Ghostty).
 
 ## Built with
 
-- [ratatui](https://ratatui.rs) + [crossterm](https://github.com/crossterm-rs/crossterm) for terminal rendering
-- [rodio](https://github.com/RustAudio/rodio) for sound
-- A halfblock framebuffer with a custom bitmap font, so every glyph and sprite shares one coordinate system and scales together across terminal font sizes
-
-## Tips
-
-- Lower your terminal's font size for a bigger arena and sharper knights. The arena grows with the window, and 80x24 is enough to play.
-- The arena size is picked when a run starts. Resizing during a run only rescales the view, and if the window gets too small the game pauses until you make it bigger again.
-- Controls are smoothest in terminals that support the kitty keyboard protocol, such as kitty, WezTerm or Ghostty.
-- A truecolor terminal (most modern ones) is required for the palette.
+[ratatui](https://ratatui.rs), [crossterm](https://github.com/crossterm-rs/crossterm) and [rodio](https://github.com/RustAudio/rodio).
