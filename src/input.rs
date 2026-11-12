@@ -26,8 +26,15 @@ impl SharedInput {
     }
 
     fn handle_key_event(&mut self, event: KeyEvent) {
+        // Letters are tracked in lowercase, so Caps Lock or Shift doesn't
+        // change what a key does, and a shifted release still clears the
+        // unshifted press.
+        let code = match event.code {
+            KeyCode::Char(c) => KeyCode::Char(c.to_ascii_lowercase()),
+            other => other,
+        };
         if matches!(event.kind, KeyEventKind::Press)
-            && event.code == KeyCode::Char('c')
+            && code == KeyCode::Char('c')
             && event.modifiers.contains(KeyModifiers::CONTROL)
         {
             self.exit_requested = true;
@@ -35,15 +42,15 @@ impl SharedInput {
         }
         match event.kind {
             KeyEventKind::Press => {
-                self.keys_last_press.insert(event.code, Instant::now());
-                self.pressed_keys.push(event.code);
+                self.keys_last_press.insert(code, Instant::now());
+                self.pressed_keys.push(code);
             }
             KeyEventKind::Repeat => {
-                self.keys_last_press.insert(event.code, Instant::now());
+                self.keys_last_press.insert(code, Instant::now());
             }
             KeyEventKind::Release => {
                 self.has_release_support = true;
-                self.keys_last_press.remove(&event.code);
+                self.keys_last_press.remove(&code);
             }
         }
     }
@@ -132,4 +139,36 @@ pub fn spawn_input_thread(shared: Arc<Mutex<SharedInput>>) -> std::thread::JoinH
             }
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::KeyEventState;
+
+    fn key(c: char, kind: KeyEventKind, modifiers: KeyModifiers) -> KeyEvent {
+        KeyEvent {
+            code: KeyCode::Char(c),
+            modifiers,
+            kind,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    #[test]
+    fn letters_are_case_insensitive() {
+        let mut s = SharedInput::new();
+        s.handle_key_event(key('W', KeyEventKind::Press, KeyModifiers::SHIFT));
+        assert_eq!(s.pressed_keys, vec![KeyCode::Char('w')]);
+        assert!(s.keys_last_press.contains_key(&KeyCode::Char('w')));
+
+        // Press unshifted, release shifted: the key must count as released.
+        s.handle_key_event(key('a', KeyEventKind::Press, KeyModifiers::NONE));
+        s.handle_key_event(key('A', KeyEventKind::Release, KeyModifiers::SHIFT));
+        assert!(!s.keys_last_press.contains_key(&KeyCode::Char('a')));
+
+        // Ctrl+C still exits with Caps Lock on.
+        s.handle_key_event(key('C', KeyEventKind::Press, KeyModifiers::CONTROL));
+        assert!(s.exit_requested);
+    }
 }

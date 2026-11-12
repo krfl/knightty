@@ -131,10 +131,10 @@ pub fn check_pit(c: &Combatant, hazards: &[Hazard]) -> bool {
         return false;
     }
     for h in hazards {
-        if matches!(h.kind, HazardKind::Pit) {
-            if dist2(c.pos, h.pos) < (h.radius - c.radius * 0.4).max(0.0).powi(2) {
-                return true;
-            }
+        if matches!(h.kind, HazardKind::Pit)
+            && dist2(c.pos, h.pos) < (h.radius - c.radius * 0.4).max(0.0).powi(2)
+        {
+            return true;
         }
     }
     false

@@ -1,7 +1,8 @@
-use std::io::Stdout;
+use std::io::{BufWriter, Stdout};
 use std::time::{Duration, Instant};
 
 use crossterm::event::KeyCode;
+use crossterm::terminal::{BeginSynchronizedUpdate, EndSynchronizedUpdate};
 use rand::Rng;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
@@ -11,25 +12,26 @@ use crate::fx;
 use crate::input::spawn_input_thread;
 use crate::physics::{self, MIN_HIT_SPEED};
 use crate::render::terminal::{JoustView, PX_PER_COL, PX_PER_ROW, detect_cell_pixel_size};
-use crate::ui::{self, ArenaView, HudView};
-use crate::world::arena::{self, ArenaTier};
+use crate::ui::{self, ArenaView, HudView, Layout};
+use crate::world::arena;
 use crate::world::combatant::{Combatant, OpponentMode};
 use crate::world::hazard::{self, Difficulty};
+
+/// The terminal type the game draws to: stdout behind a large buffer so a
+/// frame goes out in a few big writes instead of many small ones.
+pub type GameTerminal = Terminal<CrosstermBackend<BufWriter<Stdout>>>;
 
 const PHYSICS_HZ: f32 = 240.0;
 const PHYSICS_DT: f32 = 1.0 / PHYSICS_HZ;
 const MAX_FRAME_TIME: f32 = 0.1;
-const TARGET_FPS: u64 = 24;
+const TARGET_FPS: f64 = 60.0;
 /// Score required to win the tourney.
 const WIN_LEVEL: u32 = 10;
 
-pub fn run(
-    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
-    app: &mut App,
-) -> std::io::Result<()> {
+pub fn run(terminal: &mut GameTerminal, app: &mut App) -> std::io::Result<()> {
     let mut accumulator = 0.0f32;
     let mut last_time = Instant::now();
-    let frame_duration = Duration::from_millis(1000 / TARGET_FPS);
+    let frame_duration = Duration::from_secs_f64(1.0 / TARGET_FPS);
     // Tracks airborne state across frames so we can detect the
     // airborne→grounded transition and play the land sound exactly once.
     let mut knight_was_airborne = false;
@@ -74,11 +76,17 @@ pub fn run(
         };
         resize_framebuffer(app, size.width, size.height);
 
+        // Decide text scales, the HUD height and the pixel aspect once for
+        // the whole frame. UI scale follows the terminal cells *and* the
+        // actual cell pixel size, so text stays about as readable at any
+        // font size.
+        app.layout = Layout::new(size.width, size.height, detect_cell_pixel_size(), &hud_view(app));
+
         // When the terminal is too small to render the arena, pause the
         // simulation entirely. Physics shouldn't keep running while the player
         // can't see what's happening.
-        let paused_for_size = matches!(app.tier, ArenaTier::BelowMin)
-            && matches!(app.state, AppState::Playing);
+        let too_small = arena_too_small(app);
+        let paused_for_size = too_small && matches!(app.state, AppState::Playing);
         if paused_for_size {
             accumulator = 0.0;
         }
@@ -122,65 +130,9 @@ pub fn run(
             s.update(frame_time, speed);
         }
 
-        // Render everything into the framebuffer for a single coordinate
-        // system and a single visual style. UI scale picked from current
-        // terminal cells *and* the actual cell pixel size, so absolute
-        // readability stays consistent across font sizes.
-        let (_cell_w, cell_h) = detect_cell_pixel_size();
-        let ui_scale = ui::pick_ui_scale(size.width, size.height, cell_h);
-        // HUD scale capped one tier below menu/overlays so it doesn't
-        // dominate the screen at very wide terminals.
-        let hud_scale = ui::UiScale {
-            glyph_w: ui_scale.glyph_w,
-            cell_scale: ui_scale.cell_scale.min(2),
-        };
-
-        match app.state {
-            AppState::Menu => {
-                ui::draw_menu(
-                    &mut app.framebuffer,
-                    app.menu_selection,
-                    app.difficulty,
-                    ui_scale,
-                );
-            }
-            AppState::Playing | AppState::GameOver | AppState::Victory => {
-                if matches!(app.tier, ArenaTier::BelowMin) {
-                    ui::draw_below_min(&mut app.framebuffer);
-                } else {
-                    let banner_owned = app.banner.as_ref().map(|(s, _)| s.clone());
-                    let arena_view = ArenaView {
-                        tier: app.tier,
-                        knight: &app.knight,
-                        opponent: &app.opponent,
-                        tilt: app.input.tilt,
-                        hazards: &app.hazards,
-                        particles: &app.particles,
-                        banner: banner_owned.as_deref(),
-                    };
-                    ui::draw_background(&mut app.framebuffer);
-                    ui::draw_arena(&mut app.framebuffer, &mut app.arena_bg, &arena_view, hud_scale);
-                    let hud = HudView {
-                        score: app.score,
-                        best: app.best,
-                        difficulty: app.difficulty,
-                        level: app.level(),
-                    };
-                    ui::draw_hud(&mut app.framebuffer, &hud, hud_scale);
-                    if matches!(app.state, AppState::GameOver) {
-                        ui::draw_game_over(
-                            &mut app.framebuffer,
-                            &app.death_message,
-                            app.score,
-                            ui_scale,
-                        );
-                    }
-                    if matches!(app.state, AppState::Victory) {
-                        ui::draw_victory(&mut app.framebuffer, ui_scale);
-                    }
-                }
-            }
-        }
+        // Input may have started a run, so check the size again.
+        let too_small = arena_too_small(app);
+        draw_frame(app, too_small);
 
         // Same rationale as the size query: a mid-frame resize can fail the
         // draw call transiently. Drop the frame and retry next loop instead
@@ -196,6 +148,78 @@ pub fn run(
     Ok(())
 }
 
+fn hud_view(app: &App) -> HudView {
+    HudView {
+        score: app.score,
+        best: app.best,
+        difficulty: app.difficulty,
+        level: app.level(),
+    }
+}
+
+/// True when the current run's arena can't be drawn at a playable scale in
+/// the current framebuffer.
+fn arena_too_small(app: &App) -> bool {
+    arena::too_small(
+        app.arena_size,
+        app.framebuffer.width,
+        app.framebuffer.height,
+        app.layout.top_px,
+        app.layout.y_scale,
+    )
+}
+
+/// Render everything into the framebuffer, so there is a single coordinate
+/// system and a single visual style.
+fn draw_frame(app: &mut App, too_small: bool) {
+    let layout = app.layout;
+    match app.state {
+        AppState::Menu => {
+            ui::draw_menu(
+                &mut app.framebuffer,
+                app.menu_selection,
+                app.difficulty,
+                layout.ui_scale,
+            );
+        }
+        AppState::Playing | AppState::GameOver | AppState::Victory => {
+            if too_small {
+                ui::draw_below_min(&mut app.framebuffer);
+                return;
+            }
+            let banner_owned = app.banner.as_ref().map(|(s, _)| s.clone());
+            let arena_view = ArenaView {
+                arena_size: app.arena_size,
+                knight: &app.knight,
+                opponent: &app.opponent,
+                tilt: app.input.tilt,
+                hazards: &app.hazards,
+                banner: banner_owned.as_deref(),
+            };
+            let hud = hud_view(app);
+            let iso = ui::draw_scene(
+                &mut app.framebuffer,
+                &mut app.arena_bg,
+                &arena_view,
+                &hud,
+                &layout,
+            );
+            if matches!(app.state, AppState::GameOver) {
+                ui::draw_game_over(
+                    &mut app.framebuffer,
+                    &app.death_message,
+                    app.score,
+                    layout.ui_scale,
+                );
+            }
+            if matches!(app.state, AppState::Victory) {
+                ui::draw_victory(&mut app.framebuffer, layout.ui_scale, layout.top_px);
+                ui::draw_particles(&mut app.framebuffer, &iso, &app.particles);
+            }
+        }
+    }
+}
+
 fn resize_framebuffer(app: &mut App, term_cols: u16, term_rows: u16) {
     // Framebuffer covers the entire terminal. HUD and overlays draw into it
     // alongside the arena, so there's no separate ratatui-text row to reserve.
@@ -204,21 +228,28 @@ fn resize_framebuffer(app: &mut App, term_cols: u16, term_rows: u16) {
     if fb_w != app.framebuffer.width || fb_h != app.framebuffer.height {
         app.framebuffer.resize(fb_w, fb_h);
     }
-    app.tier = arena::pick_tier(term_cols, term_rows);
 }
 
-fn present(
-    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
-    app: &mut App,
-) -> std::io::Result<()> {
-    terminal.draw(|f| {
-        let area = f.area();
-        let view = JoustView {
-            framebuffer: &app.framebuffer,
-        };
-        f.render_widget(view, area);
-    })?;
-    Ok(())
+/// Send one frame inside a synchronized update, so terminals that support it
+/// show the whole repaint at once instead of tearing.
+fn present(terminal: &mut GameTerminal, app: &mut App) -> std::io::Result<()> {
+    // The begin marker goes straight out rather than sitting in the buffer,
+    // so a panic while building the frame can't leave it queued behind the
+    // panic hook's cleanup.
+    crossterm::execute!(std::io::stdout(), BeginSynchronizedUpdate)?;
+    // `draw` flushes the buffered writer when it is done.
+    let drawn = terminal
+        .draw(|f| {
+            let area = f.area();
+            let view = JoustView {
+                framebuffer: &app.framebuffer,
+            };
+            f.render_widget(view, area);
+        })
+        .map(|_| ());
+    let ended = crossterm::execute!(terminal.backend_mut(), EndSynchronizedUpdate);
+    drawn?;
+    ended
 }
 
 fn handle_menu_input(app: &mut App) {
@@ -254,6 +285,13 @@ fn activate_menu(app: &mut App) {
 }
 
 fn start_playing(app: &mut App) {
+    // Lock the arena size for the whole run from the current screen.
+    app.arena_size = arena::arena_size_for(
+        app.framebuffer.width,
+        app.framebuffer.height,
+        app.layout.top_px,
+        app.layout.y_scale,
+    );
     app.state = AppState::Playing;
     app.score = 0;
     app.round_time = 0.0;
@@ -262,7 +300,7 @@ fn start_playing(app: &mut App) {
 }
 
 fn spawn_round(app: &mut App, knight_too: bool) {
-    let s = app.tier.size();
+    let s = app.arena_size;
     let mut rng = rand::rng();
     if knight_too {
         app.knight = Combatant::new((s * 0.2, s * 0.5), (1.0, 0.0), 3.5, 9.0);
@@ -335,7 +373,8 @@ fn handle_playing_input(app: &mut App) {
             KeyCode::Char(' ') => {
                 app.knight.try_jump(physics::JUMP_IMPULSE);
             }
-            KeyCode::Char('m') => {
+            // Debug builds only: cycle how the opponent moves.
+            KeyCode::Char('m') if cfg!(debug_assertions) => {
                 app.opponent_mode = app.opponent_mode.cycle();
             }
             _ => {}
@@ -366,7 +405,7 @@ fn physics_tick(app: &mut App, dt: f32) {
     if !matches!(app.state, AppState::Playing) {
         return;
     }
-    let arena_size = app.tier.size();
+    let arena_size = app.arena_size;
 
     // Rotate the player's input tilt by 45° so screen-up actually moves the
     // knight toward screen-up in iso (world NW), matching what the player sees.
@@ -416,7 +455,7 @@ fn physics_tick(app: &mut App, dt: f32) {
         if let Some(s) = &app.sound {
             s.play_fall();
         }
-        app.banner = Some(("INTO THE PIT".to_string(), 1.5));
+        app.banner = None;
         app.death_message = "INTO THE PIT".to_string();
         app.state = AppState::GameOver;
         return;
@@ -448,7 +487,7 @@ fn physics_tick(app: &mut App, dt: f32) {
             if app.score > app.best {
                 app.best = app.score;
             }
-            app.banner = Some(("UNHORSED".to_string(), 1.5));
+            app.banner = None;
             app.death_message = "UNHORSED".to_string();
             app.state = AppState::GameOver;
         }
@@ -516,7 +555,7 @@ fn update_victory(app: &mut App, frame_time: f32) {
     fx::update_particles(&mut app.particles, frame_time);
 
     if app.victory_t >= app.next_firework_t {
-        let s = app.tier.size();
+        let s = app.arena_size;
         fx::spawn_firework(&mut app.particles, s);
         let interval = rand::rng().random_range(0.4f32..1.2);
         app.next_firework_t = app.victory_t + interval;

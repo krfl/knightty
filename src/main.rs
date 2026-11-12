@@ -1,11 +1,13 @@
-use std::io;
+use std::io::{self, BufWriter};
 
 use crossterm::event::{
     KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
+use crossterm::cursor::Show;
 use crossterm::execute;
 use crossterm::terminal::{
-    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+    EndSynchronizedUpdate, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
+    enable_raw_mode,
 };
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
@@ -20,6 +22,13 @@ mod render;
 mod ui;
 mod world;
 
+#[cfg(test)]
+mod render_tests;
+
+/// Output buffer size. A full repaint of a big terminal at a small font is
+/// a few hundred kilobytes of escape codes, so this keeps it to a few writes.
+const STDOUT_BUFFER: usize = 256 * 1024;
+
 fn main() -> io::Result<()> {
     install_panic_hook();
     enable_raw_mode()?;
@@ -32,7 +41,7 @@ fn main() -> io::Result<()> {
     )
     .is_ok();
 
-    let backend = CrosstermBackend::new(stdout);
+    let backend = CrosstermBackend::new(BufWriter::with_capacity(STDOUT_BUFFER, stdout));
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
 
@@ -40,14 +49,16 @@ fn main() -> io::Result<()> {
 
     let result = game_loop::run(&mut terminal, &mut app);
 
-    disable_raw_mode()?;
+    // Run every restore step even if an earlier one fails, then report the
+    // first error.
+    let raw = disable_raw_mode();
     if keyboard_enhanced {
         let _ = execute!(terminal.backend_mut(), PopKeyboardEnhancementFlags);
     }
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-    terminal.show_cursor()?;
+    let leave = execute!(terminal.backend_mut(), LeaveAlternateScreen);
+    let cursor = terminal.show_cursor();
 
-    result
+    result.and(raw).and(leave).and(cursor)
 }
 
 /// Restore the terminal on panic so the user isn't left in alt-screen + raw
@@ -60,8 +71,10 @@ fn install_panic_hook() {
         let _ = disable_raw_mode();
         let _ = execute!(
             io::stdout(),
+            EndSynchronizedUpdate,
             PopKeyboardEnhancementFlags,
             LeaveAlternateScreen,
+            Show,
         );
         original(info);
     }));

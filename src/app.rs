@@ -2,7 +2,6 @@ use crate::audio::SoundManager;
 use crate::fx::Particle;
 use crate::input::InputState;
 use crate::render::framebuffer::Framebuffer;
-use crate::world::arena::ArenaTier;
 use crate::world::combatant::{Combatant, OpponentMode};
 use crate::world::hazard::{Difficulty, Hazard};
 
@@ -37,7 +36,12 @@ pub struct App {
     /// Cached static arena floor+border layer, blitted each frame.
     pub arena_bg: crate::ui::ArenaBackground,
 
-    pub tier: ArenaTier,
+    /// Screen layout decided at the top of the current frame.
+    pub layout: crate::ui::Layout,
+    /// Arena side length in world units. Picked from the terminal size when a
+    /// run starts and kept for the whole run, so a resize only rescales the
+    /// view and never moves anything in the world.
+    pub arena_size: f32,
     pub knight: Combatant,
     pub opponent: Combatant,
     pub opponent_mode: OpponentMode,
@@ -71,7 +75,13 @@ impl App {
             framebuffer: Framebuffer::new(160, 96),
             arena_bg: crate::ui::ArenaBackground::new(),
 
-            tier: ArenaTier::Standard,
+            layout: crate::ui::Layout {
+                ui_scale: crate::ui::UiScale::SMALLEST,
+                hud_scale: crate::ui::UiScale::SMALLEST,
+                top_px: crate::ui::hud_bar_height(crate::ui::UiScale::SMALLEST) + 1,
+                y_scale: 1.0,
+            },
+            arena_size: 100.0,
             knight: Combatant::new((30.0, 50.0), (1.0, 0.0), 3.5, 9.0),
             opponent: Combatant::new((70.0, 50.0), (-1.0, 0.0), 3.5, 9.0),
             opponent_mode: OpponentMode::FreeAi,

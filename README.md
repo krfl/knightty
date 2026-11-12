@@ -34,5 +34,7 @@ Difficulty (EASY / NORMAL / HARD) is selectable from the main menu.
 
 ## Tips
 
-- Use a terminal font in the 4–12pt range for the best fit. The menu adapts at larger sizes but the game is most readable here. The lower the "better graphics".
+- Lower your terminal's font size for a bigger arena and sharper knights. The arena grows with the window, and 80x24 is enough to play.
+- The arena size is picked when a run starts. Resizing during a run only rescales the view, and if the window gets too small the game pauses until you make it bigger again.
+- Controls are smoothest in terminals that support the kitty keyboard protocol, such as kitty, WezTerm or Ghostty.
 - A truecolor terminal (most modern ones) is required for the palette.
